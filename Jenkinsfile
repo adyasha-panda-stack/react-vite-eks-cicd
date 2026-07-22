@@ -1,11 +1,9 @@
 pipeline {
     agent any
 
-    tools {
-        nodejs 'Node22'
-    }
 
     environment {
+	PATH = "/usr/bin:/usr/local/bin:${env.PATH}"
         AWS_REGION = 'ap-south-1'
         ECR_REPO = 'react-vite-app'
         ACCOUNT_ID = '738247188327'
