@@ -74,20 +74,44 @@ pipeline {
                 '''
             }
         }
-
-        stage('Deploy to Amazon EKS') {
-            steps {
-                sh '''
-                kubectl set image deployment/react-vite-app \
-                react-vite=${IMAGE_URI} \
-                -n react-app
-
-                kubectl rollout status deployment/react-vite-app \
-                -n react-app
-                '''
-            }
+	
+	stage('Verify Kubernetes Access') {
+    steps {
+        withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-creds'
+        ]]) {
+            sh '''
+            aws sts get-caller-identity
+            aws eks update-kubeconfig --region ${AWS_REGION} --name react-cicd-cluster
+            kubectl config current-context
+            kubectl get nodes
+            '''
         }
     }
+}
+
+	stage('Deploy to Amazon EKS') {
+    steps {
+        withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-creds'
+        ]]) {
+            sh '''
+            aws eks update-kubeconfig \
+              --region ${AWS_REGION} \
+              --name react-cicd-cluster
+
+            kubectl set image deployment/react-vite-app \
+              react-vite=${IMAGE_URI} \
+              -n react-app
+
+            kubectl rollout status deployment/react-vite-app \
+              -n react-app
+            '''
+        }
+    }
+}
 
     post {
         success {
