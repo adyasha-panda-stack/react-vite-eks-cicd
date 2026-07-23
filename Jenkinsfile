@@ -1,70 +1,53 @@
-pipeline { agent any
-
-
-
+pipeline {
+    agent any
 
     environment {
-	PATH = "/usr/bin:/usr/local/bin:${env.PATH}"
-        AWS_REGION = 'ap-south-1'
-        ECR_REPO = 'react-vite-app'
-        ACCOUNT_ID = '738247188327'
+        PATH = "/usr/bin:/usr/local/bin:${env.PATH}"
+        AWS_REGION = "ap-south-1"
+        ECR_REPO = "react-vite-app"
+        ACCOUNT_ID = "738247188327"
         IMAGE_TAG = "${BUILD_NUMBER}"
         IMAGE_URI = "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}"
     }
 
-	stages {
+    stages {
 
-    stage('Checkout Source') {
-        steps {
-            checkout scm
+        stage('Checkout Source') {
+            steps {
+                deleteDir()
+                checkout scm
+            }
         }
-    }
 
-    stage('Debug Environment') {
-        steps {
-            sh '''
-            echo "===== PATH ====="
-            echo $PATH
+        stage('Debug Environment') {
+            steps {
+                sh '''
+                echo "===== PATH ====="
+                echo $PATH
 
-            echo "===== NODE ====="
-            which node
-            node -v
+                echo "===== NODE ====="
+                which node
+                node -v
 
-            echo "===== NPM ====="
-            which npm
-            npm -v
+                echo "===== NPM ====="
+                which npm
+                npm -v
 
-            echo "===== GIT ====="
-            which git
-            git --version
-
-            echo "===== DOCKER ====="
-            which docker
-            docker --version
-            '''
+                echo "===== DOCKER ====="
+                which docker
+                docker --version
+                '''
+            }
         }
-    }
 
-    stage('Install Dependencies') {
-        steps {
-            sh 'npm install'
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                export DOCKER_BUILDKIT=0
+                docker build --no-cache -t ${ECR_REPO}:${IMAGE_TAG} .
+                '''
+            }
         }
-    }
-
-    stage('Build React App') {
-        steps {
-            sh 'npm run build'
-        }
-    }
-
-	stage('Build Docker Image') {
-    steps {
-        sh '''
-        export DOCKER_BUILDKIT=0
-        docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-        '''
-    }
-}
 
         stage('Login to Amazon ECR') {
             steps {
@@ -72,9 +55,8 @@ pipeline { agent any
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-creds'
                 ]]) {
-
                     sh '''
-                    aws ecr get-login-password --region $AWS_REGION | \
+                    aws ecr get-login-password --region ${AWS_REGION} | \
                     docker login \
                     --username AWS \
                     --password-stdin \
@@ -99,13 +81,7 @@ pipeline { agent any
                 kubectl set image deployment/react-vite-app \
                 react-vite=${IMAGE_URI} \
                 -n react-app
-                '''
-            }
-        }
 
-        stage('Verify Rollout') {
-            steps {
-                sh '''
                 kubectl rollout status deployment/react-vite-app \
                 -n react-app
                 '''
@@ -114,7 +90,6 @@ pipeline { agent any
     }
 
     post {
-
         success {
             echo 'Deployment Successful'
         }
