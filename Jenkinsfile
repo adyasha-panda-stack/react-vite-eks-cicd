@@ -11,25 +11,50 @@ pipeline {
         IMAGE_URI = "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}"
     }
 
-    stages {
+	stages {
 
-        stage('Checkout Source') {
-            steps {
-                checkout scm
-            }
+    stage('Checkout Source') {
+        steps {
+            checkout scm
         }
+    }
 
-        stage('Install Dependencies') {
-            steps {
-                sh 'npm install'
-            }
-        }
+    stage('Debug Environment') {
+        steps {
+            sh '''
+            echo "===== PATH ====="
+            echo $PATH
 
-        stage('Build React App') {
-            steps {
-                sh 'npm run build'
-            }
+            echo "===== NODE ====="
+            which node
+            node -v
+
+            echo "===== NPM ====="
+            which npm
+            npm -v
+
+            echo "===== GIT ====="
+            which git
+            git --version
+
+            echo "===== DOCKER ====="
+            which docker
+            docker --version
+            '''
         }
+    }
+
+    stage('Install Dependencies') {
+        steps {
+            sh 'npm install'
+        }
+    }
+
+    stage('Build React App') {
+        steps {
+            sh 'npm run build'
+        }
+    }
 
         stage('Build Docker Image') {
             steps {
