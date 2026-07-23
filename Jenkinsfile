@@ -33,9 +33,19 @@ pipeline {
                 which npm
                 npm -v
 
+                echo "===== GIT ====="
+                which git
+                git --version
+
                 echo "===== DOCKER ====="
                 which docker
                 docker --version
+
+                echo "===== AWS CLI ====="
+                aws --version
+
+                echo "===== KUBECTL ====="
+                kubectl version --client
                 '''
             }
         }
@@ -49,77 +59,88 @@ pipeline {
             }
         }
 
-        stage('Login to Amazon ECR') {
+        stage('Push Image to Amazon ECR') {
             steps {
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
                     credentialsId: 'aws-creds'
                 ]]) {
                     sh '''
+                    aws sts get-caller-identity
+
                     aws ecr get-login-password --region ${AWS_REGION} | \
                     docker login \
                     --username AWS \
                     --password-stdin \
                     ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+                    docker tag ${ECR_REPO}:${IMAGE_TAG} ${IMAGE_URI}
+                    docker push ${IMAGE_URI}
                     '''
                 }
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Verify Kubernetes Access') {
             steps {
-                sh '''
-                docker tag ${ECR_REPO}:${IMAGE_TAG} ${IMAGE_URI}
-                docker push ${IMAGE_URI}
-                '''
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-creds'
+                ]]) {
+                    sh '''
+                    aws eks update-kubeconfig \
+                        --region ${AWS_REGION} \
+                        --name react-cicd-cluster
+
+                    echo "===== CURRENT CONTEXT ====="
+                    kubectl config current-context
+
+                    echo "===== CLUSTER INFO ====="
+                    kubectl cluster-info
+
+                    echo "===== NODES ====="
+                    kubectl get nodes
+                    '''
+                }
             }
         }
-	
-	stage('Verify Kubernetes Access') {
-    steps {
-        withCredentials([[
-            $class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-creds'
-        ]]) {
-            sh '''
-            aws sts get-caller-identity
-            aws eks update-kubeconfig --region ${AWS_REGION} --name react-cicd-cluster
-            kubectl config current-context
-            kubectl get nodes
-            '''
+
+        stage('Deploy to Amazon EKS') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-creds'
+                ]]) {
+                    sh '''
+                    aws eks update-kubeconfig \
+                        --region ${AWS_REGION} \
+                        --name react-cicd-cluster
+
+                    kubectl set image deployment/react-vite-app \
+                        react-vite=${IMAGE_URI} \
+                        -n react-app
+
+                    kubectl rollout status deployment/react-vite-app \
+                        -n react-app
+
+                    kubectl get pods -n react-app
+                    '''
+                }
+            }
         }
     }
-}
-
-	stage('Deploy to Amazon EKS') {
-    steps {
-        withCredentials([[
-            $class: 'AmazonWebServicesCredentialsBinding',
-            credentialsId: 'aws-creds'
-        ]]) {
-            sh '''
-            aws eks update-kubeconfig \
-              --region ${AWS_REGION} \
-              --name react-cicd-cluster
-
-            kubectl set image deployment/react-vite-app \
-              react-vite=${IMAGE_URI} \
-              -n react-app
-
-            kubectl rollout status deployment/react-vite-app \
-              -n react-app
-            '''
-        }
-    }
-}
 
     post {
         success {
-            echo 'Deployment Successful'
+            echo "Deployment Successful!"
         }
 
         failure {
-            echo 'Deployment Failed'
+            echo "Deployment Failed!"
+        }
+
+        always {
+            sh 'docker image prune -f || true'
         }
     }
 }
