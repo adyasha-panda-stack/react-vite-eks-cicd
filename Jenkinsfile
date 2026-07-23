@@ -1,5 +1,6 @@
-pipeline {
-    agent any
+pipeline { agent any
+
+
 
 
     environment {
@@ -56,11 +57,14 @@ pipeline {
         }
     }
 
-        stage('Build Docker Image') {
-            steps {
-                sh 'docker build -t ${ECR_REPO}:${IMAGE_TAG} .'
-            }
-        }
+	stage('Build Docker Image') {
+    steps {
+        sh '''
+        export DOCKER_BUILDKIT=0
+        docker build -t ${ECR_REPO}:${IMAGE_TAG} .
+        '''
+    }
+}
 
         stage('Login to Amazon ECR') {
             steps {
